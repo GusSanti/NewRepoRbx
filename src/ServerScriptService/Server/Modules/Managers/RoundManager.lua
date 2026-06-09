@@ -1114,7 +1114,6 @@ function RoundManager.StartWave(WaveNumber, visualwave)
 
 	print("Starting", waveName)
 	spawnDebug("wave", waveName, "visual", visualwave or WaveNumber, "units", table.concat(unitList, ", "))
-	Remotes.Game.SendNotification:FireAllClients("Wave "..tostring(visualwave or WaveNumber), "Normal")
 	local unitsAlive = #unitList
 	CrateDropManager.StartWave(visualwave or WaveNumber)
 
@@ -1252,6 +1251,8 @@ function RoundManager.StartGame(TotalWaves, DifficultyPreset, Gamemode, Difficul
 	end)
 
 	local totalDefinedWaves = #availableWaves
+	workspace:SetAttribute("TotalWaves", isEndless and "Endless" or totalDefinedWaves)
+	workspace:SetAttribute("CurrentWave", 0)
 
 	-- displays round counter
 	if isEndless then

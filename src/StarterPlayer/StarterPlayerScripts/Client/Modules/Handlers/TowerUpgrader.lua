@@ -63,8 +63,15 @@ local function FindGuiButton(root, names)
 
 	for _, name in ipairs(names) do
 		local found = root:FindFirstChild(name, true)
-		if found and found:IsA("GuiButton") then
-			return found
+		if found then
+			if found:IsA("GuiButton") then
+				return found
+			end
+
+			local nestedButton = found:FindFirstChildWhichIsA("GuiButton", true)
+			if nestedButton then
+				return nestedButton
+			end
 		end
 	end
 
@@ -177,7 +184,7 @@ local function UpdateUpgradeDisplay(card, tower)
 		end
 
 		upgradeButton.AutoButtonColor = true
-		upgradeButton.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		upgradeButton.Active = true
 	else
 		if priceLabel then
 			priceLabel.Text = "MAX"
@@ -186,7 +193,7 @@ local function UpdateUpgradeDisplay(card, tower)
 		end
 
 		upgradeButton.AutoButtonColor = false
-		upgradeButton.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
+		upgradeButton.Active = false
 	end
 end
 
@@ -221,14 +228,7 @@ local function UpdateGameModeText()
 	local gameModeText = FindTextObject(TowersFrame, {"GameModeTX"})
 	if not gameModeText then return end
 
-	local modeValue = workspace:GetAttribute("GameMode")
-		or workspace:GetAttribute("Gamemode")
-		or workspace:GetAttribute("Mode")
-		or workspace:GetAttribute("Difficulty")
-
-	if modeValue then
-		gameModeText.Text = tostring(modeValue)
-	end
+	gameModeText.Text = "Towers"
 end
 
 local function ApplyTowersButtonVisibility()

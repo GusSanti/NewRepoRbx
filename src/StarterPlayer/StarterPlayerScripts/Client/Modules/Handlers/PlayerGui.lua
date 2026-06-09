@@ -153,8 +153,15 @@ local function findGuiButton(root, names)
 
 	for _, name in ipairs(names) do
 		local found = root:FindFirstChild(name, true)
-		if found and found:IsA("GuiButton") then
-			return found
+		if found then
+			if found:IsA("GuiButton") then
+				return found
+			end
+
+			local nestedButton = found:FindFirstChildWhichIsA("GuiButton", true)
+			if nestedButton then
+				return nestedButton
+			end
 		end
 	end
 
@@ -210,6 +217,34 @@ local function getCenterTopText(names)
 	return findTextObject(TopUi, names)
 end
 
+local function getRoundDisplayText()
+	local statsFrame = TopUi:FindFirstChild("Stats")
+	local roundFrame = statsFrame and statsFrame:FindFirstChild("RoundBG", true)
+
+	return findTextObject(roundFrame, {"RoundTX", "WaveTX", "Round"})
+		or getCenterTopText({"RoundTX", "WaveTX", "Round"})
+end
+
+local function getCurrentWaveDisplayText()
+	local waveFrame = TopUi:FindFirstChild("Wave")
+	if not waveFrame then
+		return nil
+	end
+
+	local waveText = findTextObject(waveFrame, {"WaveTX", "Text", "RoundTX", "Round"})
+	if waveText then
+		return waveText
+	end
+
+	for _, descendant in ipairs(waveFrame:GetDescendants()) do
+		if isTextObject(descendant) then
+			return descendant
+		end
+	end
+
+	return nil
+end
+
 local function getGameSpeedButtons()
 	local topRight = MainGui:FindFirstChild("TopRight")
 	if not topRight then
@@ -255,6 +290,20 @@ local function getTowerUpgradeInfo(tower)
 	return baseName, currentLevel, nextTowerName, nextTower, nextUpgradeData
 end
 
+local function getPriorityIndex(tower, priorities)
+	local attribute = tower and tower:GetAttribute("Priority")
+
+	if typeof(attribute) == "number" then
+		return math.clamp(attribute, 1, #priorities)
+	end
+
+	if typeof(attribute) == "string" then
+		return table.find(priorities, attribute) or 1
+	end
+
+	return 1
+end
+
 local function updateUpgradeButton(button, nextUpgradeData)
 	if not button then return end
 
@@ -269,10 +318,7 @@ local function updateUpgradeButton(button, nextUpgradeData)
 
 		if button:IsA("GuiButton") then
 			button.AutoButtonColor = true
-		end
-
-		if button:IsA("GuiObject") then
-			button.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+			button.Active = true
 		end
 	else
 		if priceLabel then
@@ -283,10 +329,7 @@ local function updateUpgradeButton(button, nextUpgradeData)
 
 		if button:IsA("GuiButton") then
 			button.AutoButtonColor = false
-		end
-
-		if button:IsA("GuiObject") then
-			button.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
+			button.Active = false
 		end
 	end
 end
@@ -298,14 +341,7 @@ local function updateTowerGameModeText()
 	local gameModeText = findTextObject(towersFrame, {"GameModeTX"})
 	if not gameModeText then return end
 
-	local modeValue = workspace:GetAttribute("GameMode")
-		or workspace:GetAttribute("Gamemode")
-		or workspace:GetAttribute("Mode")
-		or workspace:GetAttribute("Difficulty")
-
-	if modeValue then
-		gameModeText.Text = tostring(modeValue)
-	end
+	gameModeText.Text = "Towers"
 end
 
 local function updateSpeedButtonState(button, isActive)
@@ -731,7 +767,7 @@ local function handleClientTowers()
 		disconnectConnection(PriorityBackwardConn)
 
 		local priorities = {"First", "Last", "Closest"}
-		local currentPriorityIndex = math.clamp(tower:GetAttribute("Priority") or 1, 1, #priorities)
+		local currentPriorityIndex = getPriorityIndex(tower, priorities)
 
 		if displayText then
 			displayText.Text = priorities[currentPriorityIndex]
@@ -1108,20 +1144,52 @@ RecieveDialogueData.OnClientEvent:Connect(function(Data)
 end)
 
 local lastMaxRound = 0
+local INFINITY_SYMBOL = utf8.char(8734)
 
 local function setRoundText(CurrentRound, MaxRound)
-	local WaveText = getCenterTopText({"Wave", "WaveTX", "RoundTX", "Round"})
-	if WaveText then
-		local currentRound = math.floor(tonumber(CurrentRound) or 0)
-		lastMaxRound = MaxRound
+	local currentWaveText = getCurrentWaveDisplayText()
+	local roundText = getRoundDisplayText()
+	if not roundText and not currentWaveText then
+		return
+	end
 
-		if MaxRound == "Endless" then
-			WaveText.Text = string.format("WAVE %02d", currentRound)
+	local currentRound = math.max(0, math.floor(tonumber(CurrentRound) or 0))
+	local resolvedMaxRound = MaxRound
+
+	if resolvedMaxRound == nil then
+		resolvedMaxRound = workspace:GetAttribute("TotalWaves")
+	end
+
+	if resolvedMaxRound == nil then
+		resolvedMaxRound = lastMaxRound
+	end
+
+	if resolvedMaxRound == nil then
+		return
+	end
+
+	lastMaxRound = resolvedMaxRound
+
+	if currentWaveText then
+		local waveFrame = TopUi:FindFirstChild("Wave")
+		if waveFrame and waveFrame:IsA("GuiObject") then
+			waveFrame.Visible = true
+		end
+		currentWaveText.Text = string.format("%02d", currentRound)
+	end
+
+	if roundText then
+		if resolvedMaxRound == "Endless" then
+			roundText.Text = string.format("%02d/%s", currentRound, INFINITY_SYMBOL)
 			return
 		end
 
-		local maxRound = math.floor(tonumber(MaxRound) or 0)
-		WaveText.Text = string.format("WAVE %02d/%02d", currentRound, maxRound)
+		local maxRound = math.floor(tonumber(resolvedMaxRound) or 0)
+		if maxRound <= 0 then
+			return
+		end
+
+		roundText.Text = string.format("%02d/%02d", currentRound, maxRound)
 	end
 end
 
@@ -1130,12 +1198,18 @@ Remotes.Game.DisplayRound.OnClientEvent:Connect(function(CurrentRound, MaxRound)
 end)
 
 workspace:GetAttributeChangedSignal("CurrentWave"):Connect(function()
-	setRoundText(workspace:GetAttribute("CurrentWave") or 0, lastMaxRound)
+	setRoundText(workspace:GetAttribute("CurrentWave") or 0, workspace:GetAttribute("TotalWaves") or lastMaxRound)
+end)
+
+workspace:GetAttributeChangedSignal("TotalWaves"):Connect(function()
+	setRoundText(workspace:GetAttribute("CurrentWave") or 0, workspace:GetAttribute("TotalWaves") or lastMaxRound)
 end)
 
 Remotes.Game.SendNotification.OnClientEvent:Connect(function(Text, Type)
 	sendNotification(Text, Type)
 end)
+
+setRoundText(workspace:GetAttribute("CurrentWave") or 0, workspace:GetAttribute("TotalWaves") or lastMaxRound)
 
 local function setTimerText(secondsRemaining: number)
 	local Timer = getCenterTopText({"TimeTX", "Timer"})
